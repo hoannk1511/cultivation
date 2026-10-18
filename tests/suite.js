@@ -1,40 +1,23 @@
 import puppeteer from 'puppeteer-core';
 import assert from 'assert';
-import { spawn } from 'child_process';
+import { getBrowserExecutablePath, ensureServerRunning } from './test_utils.js';
 
 const PORT = 3000;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
-async function isServerRunning() {
-  try {
-    const res = await fetch(BASE_URL);
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 async function runTests() {
-  let serverProcess = null;
+  let serverHandle = null;
+  let browser = null;
 
-  // Auto-start preview server if not running
-  if (!(await isServerRunning())) {
-    console.log("Local server not detected on port 3000, starting Vite preview server...");
-    serverProcess = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--host', '127.0.0.1'], {
-      stdio: 'ignore'
+  try {
+    serverHandle = await ensureServerRunning({ port: PORT, host: '127.0.0.1' });
+    const executablePath = getBrowserExecutablePath();
+
+    browser = await puppeteer.launch({
+      executablePath,
+      headless: "new",
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
-
-    for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 300));
-      if (await isServerRunning()) break;
-    }
-  }
-
-  const browser = await puppeteer.launch({
-    executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    headless: "new",
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
 
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 900 });
@@ -233,18 +216,24 @@ async function runTests() {
     }
   }
 
-  await browser.close();
+    console.log("\n=== TEST SUMMARY ===");
+    const passed = testResults.filter(r => r.status === 'PASS').length;
+    console.log(`Passed: ${passed} / ${testResults.length}`);
 
-  if (serverProcess) {
-    serverProcess.kill();
-  }
-
-  console.log("\n=== TEST SUMMARY ===");
-  const passed = testResults.filter(r => r.status === 'PASS').length;
-  console.log(`Passed: ${passed} / ${testResults.length}`);
-
-  if (passed !== testResults.length) {
-    process.exit(1);
+    if (passed !== testResults.length) {
+      process.exit(1);
+    }
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (err) {
+        console.error("Error closing browser:", err);
+      }
+    }
+    if (serverHandle) {
+      serverHandle.stopServer();
+    }
   }
 }
 

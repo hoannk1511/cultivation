@@ -1,38 +1,23 @@
 import puppeteer from 'puppeteer-core';
 import assert from 'assert';
-import { spawn } from 'child_process';
+import { getBrowserExecutablePath, ensureServerRunning } from './test_utils.js';
 
 const PORT = 3000;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
-async function isServerRunning() {
-  try {
-    const res = await fetch(BASE_URL);
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 async function runMigrationTest() {
-  let serverProcess = null;
+  let serverHandle = null;
+  let browser = null;
 
-  if (!(await isServerRunning())) {
-    serverProcess = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--host', '127.0.0.1'], {
-      stdio: 'ignore'
+  try {
+    serverHandle = await ensureServerRunning({ port: PORT, host: '127.0.0.1' });
+    const executablePath = getBrowserExecutablePath();
+
+    browser = await puppeteer.launch({
+      executablePath,
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
-
-    for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 300));
-      if (await isServerRunning()) break;
-    }
-  }
-
-  const browser = await puppeteer.launch({
-    executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
 
   const page = await browser.newPage();
 
@@ -122,10 +107,19 @@ async function runMigrationTest() {
   assert.strictEqual(stateZh.historyName, 'Tô Nhược Thủy');
   console.log('[PASS] Old Chinese save migrated to Vietnamese cleanly without data loss');
 
-  await browser.close();
-  if (serverProcess) serverProcess.kill();
-
   console.log('\n=== ALL MIGRATION TESTS PASSED ===');
+} finally {
+  if (browser) {
+    try {
+      await browser.close();
+    } catch (err) {
+      console.error('Error closing browser:', err);
+    }
+  }
+  if (serverHandle) {
+    serverHandle.stopServer();
+  }
+}
 }
 
 runMigrationTest().catch(err => {

@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tests/suite.js && node tests/test_migration.js"
+    "test": "npm run build && node tests/suite.js && node tests/test_migration.js"
   },
   "keywords": [],
   "author": "",
