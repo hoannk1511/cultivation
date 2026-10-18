@@ -73,16 +73,33 @@ Mọi phát hiện (findings) trong quá trình review phải được phân lo�
 
 ## 4. Định Dạng Báo Cáo Code Review Chuẩn
 
-Mỗi phát hiện cần tuân thủ cấu trúc 6 phần bắt buộc:
+Mỗi phát hiện (finding) phải có ID ổn định duy nhất xuyên suốt các vòng review và tuân thủ cấu trúc thông tin chuẩn gồm 8 trường bắt buộc:
+
+1. **Finding ID & Mức độ ưu tiên:** ID ổn định (ví dụ: `FINDING-001`, `FINDING-002`) kèm phân loại nghiêm trọng `[P0]`, `[P1]`, `[P2]`, hoặc `[P3]`.
+2. **Trạng thái vòng lặp (Status):**
+   - `NEW`: Phát hiện mới ở vòng hiện tại.
+   - `RESOLVED`: Đã sửa và đã được kiểm chứng bằng test/bằng chứng trực tiếp (không báo lại như bug mới).
+   - `UNRESOLVED`: Chưa được sửa từ vòng trước, giữ nguyên ID và tiếp tục theo dõi (không tạo bản sao).
+   - `REGRESSION` / `REOPENED`: Lỗi từng được xác nhận sửa nhưng tái xuất hiện ở vòng sau; phải dẫn chiếu finding gốc và kèm bằng chứng mới.
+3. **Vị trí & Điểm neo ổn định:** Tệp và khoảng dòng (`file:line-range`) theo commit đang review. Đối với bundle đơn khối `src/main.js`, bắt buộc cung cấp vị trí định danh ổn định (tên hàm, ID sự kiện, object/property, hoặc đoạn code neo).
+4. **SHA căn cứ:** Commit SHA cụ thể được dùng làm phạm vi rà soát (Base diff ở Vòng 1; commit sửa lỗi `<fix_commit>` ở các vòng sau).
+5. **Điều kiện kích hoạt & Bằng chứng trực tiếp:** Tình huống tái hiện lỗi và bằng chứng thực tế (trích dẫn dòng mã, biến, logic hoặc output lệnh/test).
+6. **Nguyên nhân gốc & Tác động:** Bản chất khiếm khuyết ở cấp nguyên nhân gốc và tác động tới gameplay, UI, state, persistence, migration hoặc dữ liệu liên quan.
+7. **Các vị trí liên quan (Same-pattern Locations):** Các caller/callee, nhánh điều kiện, flow phụ thuộc hoặc các vị trí có cùng pattern/logic cần rà soát đồng bộ; không chỉ sửa vị trí gây lỗi mà bỏ qua flow phụ thuộc.
+8. **Phương án sửa gốc & Test hồi quy đề xuất:** Giải pháp khắc phục triệt để ở cấp nguyên nhân gốc (không vá hời hợt) và các ca kiểm thử hồi quy cần bổ sung.
+
+Mẫu báo cáo finding chuẩn:
 
 ```markdown
-### [P1] Lệch nhánh tử vong khi thể trạng tụt về 0 trong sự kiện kho thóc
+### [P1] FINDING-001: Lệch nhánh tử vong khi thể trạng tụt về 0 trong sự kiện kho thóc
 
-- **Vị trí:** `src/main.js` (tìm kiếm: `sparse_mortal_granary_raiders` hoặc chỉ số `De[13]`).
-- **Mô tả lỗi:** Nhánh bị thương (`injury`) chứa trường `endingReason` mô tả cái chết do bị đâm tại kho thóc, gây xung đột tự sự khi nhân vật đã thoát về dưỡng thương nhưng kiếp sống kết thúc sau đó.
-- **Điều kiện kích hoạt & Tác động:** Xảy ra khi người chơi chọn nhánh chống cự, nhận sát thương -18 thể trạng khiến thể trạng tụt về 0. Thẻ Mệnh hiển thị sai lệch bối cảnh tử vong.
-- **Bằng chứng:** Khảo sát logic `Ct(e, t)` tại dòng 10115074 (`St(e, t.endingReason || ...)`).
-- **Đề xuất sửa đổi tối thiểu:** Xóa bỏ trường `endingReason` khỏi object `outcomes[1]` của sự kiện `De[13]`.
+- **Trạng thái:** `NEW` (Vòng 1)
+- **Vị trí:** `src/main.js` (Điểm neo ổn định: sự kiện `sparse_mortal_granary_raiders` hoặc chỉ số `De[13]`, nhánh `outcomes[1]`).
+- **SHA căn cứ:** `c15057c835a269c8f90dfeb2ee7acb1a34f1bfe1`
+- **Điều kiện kích hoạt & Bằng chứng:** Xảy ra khi người chơi chọn nhánh chống cự, nhận sát thương -18 thể trạng khiến thể trạng tụt về 0. Khảo sát logic `Ct(e, t)` tại dòng 10115074 (`St(e, t.endingReason || ...)`): nhánh bị thương chứa trường `endingReason` mô tả cái chết do bị đâm tại kho thóc.
+- **Nguyên nhân gốc & Tác động:** Khai báo nhầm trường `endingReason` vào nhánh sống sót (`injury`), gây xung đột tự sự nghiêm trọng khi nhân vật đã thoát về dưỡng thương nhưng kiếp sống kết thúc sau đó lại hiển thị chết do bị đâm tại kho thóc.
+- **Các vị trí liên quan cần kiểm tra:** Quét toàn bộ các sự kiện thuộc nhóm nguy cơ (`danger_*`, `sparse_*`) có nhánh `injury` nhận sát thương âm để đảm bảo không bị gán nhầm `endingReason`.
+- **Phương án sửa gốc & Test hồi quy:** Xóa bỏ trường `endingReason` khỏi object `outcomes[1]` của `De[13]`. Bổ sung test kiểm tra sự kiện `De[13]` khi thể trạng tụt về 0 để xác nhận fallback về `"Trọng thương không qua khỏi"` thay vì thông điệp mâu thuẫn.
 ```
 
 ---
@@ -109,15 +126,56 @@ Do `src/main.js` hiện là tệp bundle gộp đơn khối lớn (~12.6MB, 8 d�
 
 ---
 
-## 7. Quy Tắc Khi Chỉnh Sửa Mã Nguồn
+## 7. Quy Tắc Sửa Lỗi & Chu Trình Review Lặp (Review-Fix Protocol)
 
+Nhằm đảm bảo chất lượng kỹ thuật, tính hội tụ và tránh vòng lặp vô tận, mọi hoạt động review và sửa lỗi trong repository phải tuân thủ nghiêm ngặt 5 quy tắc chu trình sau:
+
+### 7.1. Giới Hạn Tối Đa 3 Vòng Cho Mỗi PR (3-Round Review/Fix Limit)
+- **Định nghĩa một vòng:** Một chu kỳ hoàn chỉnh gồm: *Review → Báo cáo finding → Sửa lỗi (Fix) → Review xác nhận*. Các thao tác đọc file hoặc chạy test phục vụ cùng một vòng không tính là các vòng riêng biệt.
+- **Vòng 1:** Bắt buộc sử dụng `/teamwork-preview` để review toàn bộ diff của PR khi tính năng khả dụng. Nếu tính năng không khả dụng trong môi trường runtime hiện tại, phải ghi rõ lý do kỹ thuật trong báo cáo và sử dụng quy trình thay thế được cho phép (rà soát toàn diện diff qua công cụ cục bộ). Tuyệt đối không tuyên bố đã sử dụng công cụ nếu chưa thực sự thực thi. Ghi nhận base SHA, head SHA và danh sách finding với ID ổn định.
+- **Vòng 2 & Vòng 3:** Chỉ review các thay đổi mới phát sinh từ commit sửa lỗi, cùng phạm vi code liên quan cần thiết.
+- **Truy vết lịch sử vòng và finding:** Trước mỗi vòng, bắt buộc đọc báo cáo review gần nhất hoặc finding ledger đáng tin cậy để xác định chính xác số vòng hiện tại, danh sách Finding ID, trạng thái từng finding (`NEW`, `RESOLVED`, `UNRESOLVED`, `REGRESSION`/`REOPENED`) và các commit SHA đã review. Nếu không có lịch sử đủ tin cậy, agent phải báo rõ tình trạng thiếu thông tin và dừng lại xin người dùng xác nhận trước khi bắt đầu vòng tiếp theo; tuyệt đối không tự ý đặt lại bộ đếm vòng hoặc tạo finding trùng lặp.
+- **Dừng tự động sau Vòng 3:** Khi kết thúc Vòng 3 mà vẫn còn lỗi chưa xử lý, lỗi cũ tái xuất hiện (`REGRESSION`), hoặc test thất bại:
+  - **BẮT BUỘC DỪNG** quá trình patch tự động.
+  - Lập báo cáo phân tích nguyên nhân gốc (Root Cause Analysis), giải thích rõ vì sao các vòng trước chưa giải quyết triệt để vấn đề.
+  - Đề xuất tối đa **2 hướng xử lý** khả thi để người dùng lựa chọn.
+- **Không tự mở Vòng 4:** Tuyệt đối không tự ý tiến hành vòng thứ 4 nếu chưa có sự phê duyệt trực tiếp và rõ ràng từ người dùng.
+- **Báo cáo rủi ro khẩn cấp:** Nếu phát hiện rủi ro nghiêm trọng mới (P0/P1), phải báo ngay cho người dùng; nghiêm cấm dùng giới hạn vòng để che giấu hoặc bỏ qua lỗi.
+
+### 7.2. Chỉ Review Diff Mới Sau Vòng Đầu (Incremental Diff Review)
+- Ở Vòng 1, review toàn bộ diff giữa base ref và head ref của PR.
+- Từ Vòng 2 trở đi, phạm vi review mặc định **bắt buộc phải là commit sửa lỗi cụ thể**, sử dụng cú pháp:
+  ```bash
+  git diff <fix_commit>^ <fix_commit>
+  ```
+- **Không dùng lại toàn bộ diff từ base** của PR làm phạm vi review mặc định ở các vòng sau.
+- **Verdict tích lũy (Cumulative Verdict):** Dù Vòng 2 và 3 chỉ review diff của commit sửa lỗi cùng phạm vi liên quan cần thiết, verdict cuối cùng của đợt review bắt buộc phải được tính từ trạng thái tích lũy của toàn bộ finding các vòng trước, kết quả test hồi quy thực tế và các finding mới phát sinh. Tuyệt đối không được bỏ sót bất kỳ finding cũ chưa giải quyết (`UNRESOLVED`) chỉ vì nó nằm ngoài diff mới.
+- **Quyền đọc mở rộng có kiểm soát:** Được phép đọc code ngoài diff mới khi cần kiểm tra caller/callee, luồng dữ liệu (data flow), trạng thái (state), nhánh sự kiện hoặc rủi ro hồi quy. Bắt buộc phải ghi rõ phạm vi mở rộng và lý do kỹ thuật trong báo cáo.
+- **Không suy đoán commit SHA:** Nếu không thể xác định chính xác commit sửa lỗi mới cần review, agent phải báo thiếu thông tin và dừng lại; tuyệt đối không tự đoán SHA.
+
+### 7.3. Gom Finding Theo Loại & Sửa Triệt Để Cấp Nguyên Nhân Gốc (Root-Cause Fix)
+- **Kiểm tra tác động liên đới trước khi sửa:** Trước khi đề xuất hoặc thực hiện patch, bắt buộc kiểm tra ảnh hưởng của logic liên quan, các caller/callee, các nhánh điều kiện rẽ nhánh, dữ liệu lưu (`localStorage`, `indexedDB`), thứ tự xử lý và những vị trí có pattern tương tự. Tuyệt đối không chỉ vá hời hợt vị trí đang gây lỗi mà bỏ qua các flow phụ thuộc.
+- **Gom lỗi có chung nguyên nhân:** Nhóm các lỗi có cùng nguyên nhân gốc thành một finding hoặc một nhóm giải pháp có hệ thống; không áp dụng thay đổi hàng loạt nếu chưa xác minh rằng các trường hợp có cùng ngữ nghĩa.
+- **Định vị ổn định trên bundle đơn khối:** Đối với `src/main.js`, bên cạnh tệp và dòng, bắt buộc phải cung cấp vị trí định danh ổn định như tên hàm, event ID, object/property hoặc đoạn code neo.
+
+### 7.4. Quản Lý Trạng Thái Finding & Chống Trùng Lặp (No Duplicate Reporting)
+- **Duy trì ID ổn định:** Mỗi finding phải giữ nguyên ID duy nhất xuyên suốt toàn bộ các vòng review (ví dụ: `FINDING-001`, `FINDING-002`).
+- **Phân loại trạng thái chuẩn:**
+  - Finding đã sửa và được kiểm chứng: Đánh dấu `RESOLVED`, không báo lại như bug mới.
+  - Finding chưa được sửa: Giữ nguyên trạng thái `UNRESOLVED`, không tạo bản sao; liệt kê trong bảng tổng hợp tồn đọng.
+  - Finding tái xuất hiện: Đánh dấu `REGRESSION` hoặc `REOPENED`, dẫn chiếu finding gốc và cung cấp bằng chứng mới.
+  - Cùng nguyên nhân gốc gây lỗi ở vị trí mới: Cập nhật finding cũ hoặc tạo finding liên quan với lý do rõ ràng.
+- **Không bỏ qua lỗi cũ:** Tuyệt đối không được bỏ qua hoặc xóa lỗi chưa giải quyết chỉ vì lỗi đó đã từng xuất hiện ở vòng trước.
+
+### 7.5. Điều Kiện Hoàn Tất Sửa Đổi (Completion Criteria)
 Khi được người dùng cho phép sửa mã nguồn:
-1. Xác định ranh giới file được phép sửa.
-2. Kiểm tra hiện trạng, giữ nguyên các thay đổi chưa commit của người dùng.
-3. Thực hiện sửa đổi nhỏ nhất đáp ứng yêu cầu.
-4. Chạy `npm test` và `npm run build` để kiểm chứng.
-5. Báo cáo trung thực kết quả kiểm thử.
-6. Tuyệt đối không tự động chạy lệnh Git ghi (`git add`, `git commit`, `git reset`, `git checkout`).
+1. Không còn finding P0/P1/P2 chưa xử lý (tính trên toàn bộ trạng thái tích lũy qua các vòng) nếu tuyên bố code đã sẵn sàng merge.
+2. Xác định đúng ranh giới file được phép sửa; giữ nguyên các thay đổi chưa commit của người dùng.
+3. Thực hiện sửa đổi nhỏ nhất ở cấp nguyên nhân gốc đáp ứng yêu cầu.
+4. Chạy các lệnh kiểm thử thực tế (`npm test`, `npm run build`) và ghi nhận kết quả thực tế; tuyệt đối không coi kết quả test cũ là lần chạy hiện tại.
+5. Không có finding trùng lặp; mọi finding chưa xử lý và giới hạn kiểm chứng đều được nêu rõ ràng.
+6. Nếu kết thúc 3 vòng mà chưa giải quyết xong, verdict phải phản ánh đúng thực tế và agent phải dừng patch để người dùng quyết định hướng xử lý.
+7. Tuyệt đối không tự động chạy lệnh Git ghi (`git add`, `git commit`, `git reset`, `git checkout`).
 
 ---
 
@@ -133,3 +191,17 @@ Khi có sự thay đổi về schema dữ liệu, công thức gameplay hoặc q
 ## 9. Ranh Giới Quyền Hạn (Scope Boundaries)
 
 Tài liệu `AGENTS.md` này quy định tiêu chuẩn kỹ thuật nội bộ, **hoàn toàn không trao thêm quyền hạn** cho agent vượt quá phạm vi của từng nhiệm vụ do người dùng giao. Khi một nhiệm vụ được yêu cầu là "Chỉ đọc" (Read-Only), agent chỉ sử dụng các hướng dẫn trên để phân tích và lập báo cáo, tuyệt đối không tự ý can thiệp mã nguồn.
+
+---
+
+## 10. Kỹ Năng & Quy Trình Rà Soát Cục Bộ (Local Agent Skills)
+
+Dự án trang bị sẵn các Agent Skills cục bộ tại `.agents/skills/` nhằm chuẩn hóa quy trình kiểm thử và rà soát code nội bộ:
+
+1. **Kỹ năng Xác minh Hoàn thành (`cultivation-verify`):**
+   - Vị trí: [`.agents/skills/cultivation-verify/SKILL.md`](.agents/skills/cultivation-verify/SKILL.md)
+   - Nguyên tắc: Thực thi triệt để nguyên tắc bằng chứng (Iron Law of Verification). Tuyệt đối không tuyên bố hoàn thành công việc nếu chưa chạy kiểm thử thực tế và ghi nhận output thành công.
+2. **Kỹ năng Rà soát Pull Request (`cultivation-pr-review`):**
+   - Vị trí: [`.agents/skills/cultivation-pr-review/SKILL.md`](.agents/skills/cultivation-pr-review/SKILL.md)
+   - Nguyên tắc: Chế độ hoàn toàn Chỉ Đọc (Strictly Read-Only). Rà soát diff thực tế của PR dựa trên 7 vùng rủi ro trọng tâm và tuân thủ định dạng báo cáo finding chuẩn tại Mục 4.
+3. **Tài liệu quy trình chi tiết:** Tham khảo [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md) để nắm rõ chu trình 8 giai đoạn từ lập kế hoạch đến human merge.
